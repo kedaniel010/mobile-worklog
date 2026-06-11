@@ -1,5 +1,4 @@
 :root {
-  --bg: #f5efe3;
   --panel: rgba(255, 250, 243, 0.95);
   --border: rgba(94, 73, 38, 0.1);
   --text: #1f1b17;
@@ -24,9 +23,7 @@ body {
 }
 
 button,
-input,
-select,
-textarea {
+input {
   font: inherit;
 }
 
@@ -38,7 +35,6 @@ textarea {
 
 .hero,
 .panel,
-.stat-card,
 .task-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -63,7 +59,8 @@ textarea {
 h1,
 h2,
 h3,
-p {
+p,
+ul {
   margin-top: 0;
 }
 
@@ -114,15 +111,13 @@ label {
 }
 
 .form-hint {
-  margin: -4px 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
 }
 
-input,
-select,
-textarea {
+input {
   width: 100%;
   border-radius: 16px;
   border: 1px solid rgba(95, 73, 38, 0.12);
@@ -132,16 +127,9 @@ textarea {
   outline: none;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+input:focus {
   border-color: rgba(15, 118, 110, 0.4);
   box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
-}
-
-.summary-input {
-  resize: vertical;
-  min-height: 140px;
 }
 
 .form-actions,
@@ -173,14 +161,6 @@ textarea:focus {
   background: rgba(255, 255, 255, 0.86);
   color: var(--text);
   border: 1px solid rgba(95, 73, 38, 0.12);
-}
-
-.text-button {
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  padding: 0;
-  cursor: pointer;
 }
 
 .search-input {
@@ -217,6 +197,30 @@ textarea:focus {
   margin-bottom: 0;
   font-size: 22px;
   line-height: 1.25;
+}
+
+.summary-box {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 16px;
+}
+
+.summary-intro {
+  margin-bottom: 10px;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.summary-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text);
+  line-height: 1.8;
+}
+
+.summary-list li + li {
+  margin-top: 6px;
 }
 
 .danger-text {

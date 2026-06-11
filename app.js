@@ -1,5 +1,4 @@
 const storageKey = "mobile-worklog-pwa-tasks";
-const summaryStorageKey = "mobile-worklog-pwa-daily-summary";
 
 const state = {
   tasks: loadTasks(),
@@ -15,12 +14,14 @@ const elements = {
   saveButton: document.getElementById("saveButton"),
   resetButton: document.getElementById("resetButton"),
   installButton: document.getElementById("installButton"),
-  dailySummaryInput: document.getElementById("dailySummaryInput"),
   searchInput: document.getElementById("searchInput"),
   filterButtons: Array.from(document.querySelectorAll(".filter-chip")),
   taskList: document.getElementById("taskList"),
   emptyState: document.getElementById("emptyState"),
-  taskTemplate: document.getElementById("taskTemplate")
+  taskTemplate: document.getElementById("taskTemplate"),
+  summaryIntro: document.getElementById("summaryIntro"),
+  summaryList: document.getElementById("summaryList"),
+  summaryEmpty: document.getElementById("summaryEmpty")
 };
 
 init();
@@ -28,7 +29,6 @@ init();
 function init() {
   elements.taskForm.addEventListener("submit", handleSubmit);
   elements.taskForm.addEventListener("reset", handleReset);
-  elements.dailySummaryInput.addEventListener("input", handleSummaryInput);
   elements.searchInput.addEventListener("input", handleSearch);
   elements.installButton.addEventListener("click", installApp);
   elements.filterButtons.forEach((button) => {
@@ -46,7 +46,6 @@ function init() {
   });
 
   updateFilterUi();
-  elements.dailySummaryInput.value = loadSummary();
   render();
 }
 
@@ -72,7 +71,8 @@ function handleSubmit(event) {
     id: existingId || crypto.randomUUID(),
     title,
     status: previous?.status || "pending",
-    createdAt: previous?.createdAt || new Date().toISOString()
+    createdAt: previous?.createdAt || new Date().toISOString(),
+    completedAt: previous?.status === "completed" ? previous?.completedAt || new Date().toISOString() : ""
   };
 
   if (existingId) {
@@ -119,7 +119,8 @@ function trySmartComplete(input) {
 
     return {
       ...task,
-      status: "completed"
+      status: "completed",
+      completedAt: new Date().toISOString()
     };
   });
 
@@ -135,10 +136,6 @@ function handleReset() {
 function handleSearch(event) {
   state.query = event.target.value.trim().toLowerCase();
   render();
-}
-
-function handleSummaryInput(event) {
-  localStorage.setItem(summaryStorageKey, event.target.value);
 }
 
 function installApp() {
@@ -168,16 +165,40 @@ function render() {
   tasks.forEach((task) => {
     const node = elements.taskTemplate.content.firstElementChild.cloneNode(true);
     node.querySelector(".task-title").textContent = task.title;
-
     node.querySelector(".edit-button").addEventListener("click", () => editTask(task.id));
     node.querySelector(".toggle-button").textContent = task.status === "completed" ? "改回未完成" : "标记完成";
     node.querySelector(".toggle-button").addEventListener("click", () => toggleTask(task.id));
     node.querySelector(".delete-button").addEventListener("click", () => deleteTask(task.id));
-
     elements.taskList.appendChild(node);
   });
 
   elements.emptyState.hidden = tasks.length > 0;
+  renderDailySummary();
+}
+
+function renderDailySummary() {
+  const completedToday = state.tasks.filter((task) => (
+    task.status === "completed" &&
+    task.completedAt &&
+    isToday(task.completedAt)
+  ));
+
+  elements.summaryList.innerHTML = "";
+
+  if (!completedToday.length) {
+    elements.summaryIntro.textContent = "今天暂时还没有完成的任务。";
+    elements.summaryEmpty.hidden = false;
+    return;
+  }
+
+  elements.summaryIntro.textContent = `今天已完成 ${completedToday.length} 项工作：`;
+  elements.summaryEmpty.hidden = true;
+
+  completedToday.forEach((task) => {
+    const item = document.createElement("li");
+    item.textContent = task.title;
+    elements.summaryList.appendChild(item);
+  });
 }
 
 function getVisibleTasks() {
@@ -222,9 +243,11 @@ function toggleTask(id) {
       return task;
     }
 
+    const nextCompleted = task.status !== "completed";
     return {
       ...task,
-      status: task.status === "completed" ? "pending" : "completed"
+      status: nextCompleted ? "completed" : "pending",
+      completedAt: nextCompleted ? new Date().toISOString() : ""
     };
   });
 
@@ -251,18 +274,11 @@ function loadTasks() {
         id: String(task.id || crypto.randomUUID()),
         title: String(task.title),
         status: task.status === "completed" ? "completed" : "pending",
-        createdAt: task.createdAt || new Date().toISOString()
+        createdAt: task.createdAt || new Date().toISOString(),
+        completedAt: task.completedAt || ""
       }));
   } catch {
     return [];
-  }
-}
-
-function loadSummary() {
-  try {
-    return localStorage.getItem(summaryStorageKey) || "";
-  } catch {
-    return "";
   }
 }
 
@@ -296,4 +312,12 @@ function getMatchScore(title, keyword) {
   });
 
   return score;
+}
+
+function isToday(value) {
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
 }
