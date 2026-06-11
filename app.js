@@ -20,6 +20,9 @@ const elements = {
   installButton: document.getElementById("installButton"),
   seedButton: document.getElementById("seedButton"),
   exportButton: document.getElementById("exportButton"),
+  backupButton: document.getElementById("backupButton"),
+  replaceButton: document.getElementById("replaceButton"),
+  importInput: document.getElementById("importInput"),
   searchInput: document.getElementById("searchInput"),
   filterButtons: Array.from(document.querySelectorAll(".filter-chip")),
   taskList: document.getElementById("taskList"),
@@ -38,6 +41,9 @@ function init() {
   elements.taskForm.addEventListener("reset", handleReset);
   elements.seedButton.addEventListener("click", fillSample);
   elements.exportButton.addEventListener("click", exportCsv);
+  elements.backupButton.addEventListener("click", exportBackup);
+  elements.replaceButton.addEventListener("click", replaceWithSample);
+  elements.importInput.addEventListener("change", importBackup);
   elements.searchInput.addEventListener("input", handleSearch);
   elements.installButton.addEventListener("click", installApp);
   elements.filterButtons.forEach((button) => {
@@ -71,6 +77,7 @@ function handleSubmit(event) {
   }
 
   const existingId = elements.taskId.value;
+  const previous = existingId ? findTask(existingId) : null;
   const task = {
     id: existingId || crypto.randomUUID(),
     title,
@@ -78,9 +85,9 @@ function handleSubmit(event) {
     priority: elements.priorityInput.value,
     status: elements.statusInput.value,
     remindAt: elements.remindAtInput.value,
-    createdAt: existingId ? findTask(existingId)?.createdAt || new Date().toISOString() : new Date().toISOString(),
+    createdAt: previous?.createdAt || new Date().toISOString(),
     completedAt: elements.statusInput.value === "completed"
-      ? findTask(existingId)?.completedAt || new Date().toISOString()
+      ? previous?.completedAt || new Date().toISOString()
       : ""
   };
 
@@ -101,6 +108,8 @@ function handleReset() {
 
 function resetForm() {
   elements.taskId.value = "";
+  elements.titleInput.value = "";
+  elements.detailInput.value = "";
   elements.priorityInput.value = "medium";
   elements.statusInput.value = "pending";
   elements.remindAtInput.value = "";
@@ -113,6 +122,17 @@ function fillSample() {
   elements.priorityInput.value = "high";
   elements.statusInput.value = "pending";
   elements.remindAtInput.value = suggestReminderValue();
+}
+
+function replaceWithSample() {
+  if (!window.confirm("确认用示例任务覆盖当前数据吗？")) {
+    return;
+  }
+
+  state.tasks = sampleTasks();
+  persistTasks();
+  resetForm();
+  render();
 }
 
 function handleSearch(event) {
@@ -271,14 +291,65 @@ function exportCsv() {
     ])
   ];
 
-  const csv = rows.map((row) => row.map(escapeCsvField).join(",")).join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `mobile-worklog-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadFile(
+    rows.map((row) => row.map(escapeCsvField).join(",")).join("\n"),
+    `mobile-worklog-${new Date().toISOString().slice(0, 10)}.csv`,
+    "text/csv;charset=utf-8;",
+    true
+  );
+}
+
+function exportBackup() {
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    tasks: state.tasks
+  };
+
+  downloadFile(
+    JSON.stringify(backup, null, 2),
+    `mobile-worklog-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    "application/json;charset=utf-8;"
+  );
+}
+
+async function importBackup(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const tasks = Array.isArray(parsed) ? parsed : parsed.tasks;
+
+    if (!Array.isArray(tasks)) {
+      throw new Error("invalid");
+    }
+
+    state.tasks = tasks
+      .filter((task) => task && task.id && task.title)
+      .map((task) => ({
+        id: String(task.id),
+        title: String(task.title),
+        detail: String(task.detail || ""),
+        priority: normalizePriority(task.priority),
+        status: task.status === "completed" ? "completed" : "pending",
+        remindAt: String(task.remindAt || ""),
+        createdAt: task.createdAt || new Date().toISOString(),
+        completedAt: task.status === "completed" ? String(task.completedAt || "") : ""
+      }));
+
+    persistTasks();
+    resetForm();
+    render();
+    window.alert("导入恢复成功。");
+  } catch {
+    window.alert("导入失败，请确认你选择的是本工具导出的 JSON 备份文件。");
+  } finally {
+    elements.importInput.value = "";
+  }
 }
 
 function loadTasks() {
@@ -313,6 +384,10 @@ function priorityClass(priority) {
   }[priority] || "priority-medium";
 }
 
+function normalizePriority(priority) {
+  return ["high", "medium", "low"].includes(priority) ? priority : "medium";
+}
+
 function formatDateTime(value) {
   const date = new Date(value);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -336,4 +411,51 @@ function escapeCsvField(value) {
 
 function pad(value) {
   return String(value).padStart(2, "0");
+}
+
+function downloadFile(content, filename, type, prependBom = false) {
+  const body = prependBom ? "\uFEFF" + content : content;
+  const blob = new Blob([body], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function sampleTasks() {
+  const now = Date.now();
+  return [
+    {
+      id: crypto.randomUUID(),
+      title: "整理本周客户跟进清单",
+      detail: "把未回消息和待报价客户重新分类。",
+      priority: "high",
+      status: "pending",
+      remindAt: suggestReminderValue(),
+      createdAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
+      completedAt: ""
+    },
+    {
+      id: crypto.randomUUID(),
+      title: "补充项目阶段总结",
+      detail: "重点补齐风险项和下一步安排。",
+      priority: "medium",
+      status: "pending",
+      remindAt: "",
+      createdAt: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
+      completedAt: ""
+    },
+    {
+      id: crypto.randomUUID(),
+      title: "提交日报初稿",
+      detail: "已经发给自己复核。",
+      priority: "low",
+      status: "completed",
+      remindAt: "",
+      createdAt: new Date(now - 28 * 60 * 60 * 1000).toISOString(),
+      completedAt: new Date(now - 20 * 60 * 60 * 1000).toISOString()
+    }
+  ];
 }

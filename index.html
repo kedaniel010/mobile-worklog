@@ -89,6 +89,24 @@
 
     <section class="panel">
       <div class="panel-head">
+        <h2>备份与恢复</h2>
+        <button id="backupButton" class="text-button" type="button">导出备份</button>
+      </div>
+
+      <div class="backup-box">
+        <p class="backup-copy">建议你定期导出一个备份文件。以后就算换浏览器、清缓存，仍然可以重新导入恢复。</p>
+        <div class="backup-actions">
+          <label class="import-label">
+            <span>导入恢复</span>
+            <input id="importInput" type="file" accept=".json,application/json">
+          </label>
+          <button id="replaceButton" class="ghost-button" type="button">用示例覆盖当前数据</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
         <h2>任务列表</h2>
         <button id="exportButton" class="text-button" type="button">导出 CSV</button>
       </div>
