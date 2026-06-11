@@ -12,73 +12,25 @@
   <div class="app">
     <header class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Mobile Work Log</p>
+        <p class="eyebrow">Simple Work Log</p>
         <h1>工作记录助手</h1>
-        <p>不花钱也能在手机上记工作、改进度、查未完成。数据默认保存在当前手机浏览器本地。</p>
+        <p>现在只保留最核心的两项：工作内容，和完成状态。你也可以直接输入“完成 客户报价”来自动标记完成。</p>
       </div>
       <button id="installButton" class="ghost-button hidden" type="button">加到桌面</button>
     </header>
 
-    <section class="stats-grid">
-      <article class="stat-card">
-        <span>全部记录</span>
-        <strong id="totalCount">0</strong>
-      </article>
-      <article class="stat-card">
-        <span>未完成</span>
-        <strong id="pendingCount">0</strong>
-      </article>
-      <article class="stat-card">
-        <span>已完成</span>
-        <strong id="completedCount">0</strong>
-      </article>
-      <article class="stat-card">
-        <span>高优先级</span>
-        <strong id="highCount">0</strong>
-      </article>
-    </section>
-
     <section class="panel">
       <div class="panel-head">
         <h2>快速记录</h2>
-        <button id="seedButton" class="text-button" type="button">填充示例</button>
       </div>
       <form id="taskForm" class="task-form">
         <input type="hidden" id="taskId">
 
         <label>
           工作内容
-          <input id="titleInput" type="text" maxlength="60" placeholder="例如：跟进客户合同审批" required>
+          <input id="titleInput" type="text" maxlength="80" placeholder="例如：跟进客户报价" required>
         </label>
-
-        <label>
-          补充说明
-          <textarea id="detailInput" rows="3" maxlength="200" placeholder="补充背景、下一步动作、风险点"></textarea>
-        </label>
-
-        <div class="field-row">
-          <label>
-            优先级
-            <select id="priorityInput">
-              <option value="high">高优先级</option>
-              <option value="medium" selected>中优先级</option>
-              <option value="low">低优先级</option>
-            </select>
-          </label>
-
-          <label>
-            状态
-            <select id="statusInput">
-              <option value="pending" selected>未完成</option>
-              <option value="completed">已完成</option>
-            </select>
-          </label>
-        </div>
-
-        <label>
-          提醒时间
-          <input id="remindAtInput" type="datetime-local">
-        </label>
+        <p class="form-hint">直接输入工作内容会新增记录。输入“完成 空格 关键词”会自动把最匹配的未完成任务标记成已完成。</p>
 
         <div class="form-actions">
           <button id="saveButton" class="primary-button" type="submit">保存记录</button>
@@ -89,57 +41,35 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>备份与恢复</h2>
-        <button id="backupButton" class="text-button" type="button">导出备份</button>
+        <h2>记录列表</h2>
       </div>
 
-      <div class="backup-box">
-        <p class="backup-copy">建议你定期导出一个备份文件。以后就算换浏览器、清缓存，仍然可以重新导入恢复。</p>
-        <div class="backup-actions">
-          <label class="import-label">
-            <span>导入恢复</span>
-            <input id="importInput" type="file" accept=".json,application/json">
-          </label>
-          <button id="replaceButton" class="ghost-button" type="button">用示例覆盖当前数据</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <h2>任务列表</h2>
-        <button id="exportButton" class="text-button" type="button">导出 CSV</button>
-      </div>
-
-      <input id="searchInput" class="search-input" type="search" placeholder="搜索标题、备注或提醒时间">
+      <input id="searchInput" class="search-input" type="search" placeholder="搜索工作内容">
 
       <div class="filter-row">
         <button class="filter-chip active" data-filter="all" type="button">全部</button>
         <button class="filter-chip" data-filter="pending" type="button">未完成</button>
         <button class="filter-chip" data-filter="completed" type="button">已完成</button>
-        <button class="filter-chip" data-filter="high" type="button">高优先级</button>
-        <button class="filter-chip" data-filter="reminder" type="button">已设提醒</button>
       </div>
 
       <div id="taskList" class="task-list"></div>
-      <p id="emptyState" class="empty-state">还没有记录，先新增一条任务吧。</p>
+      <p id="emptyState" class="empty-state">还没有记录，先新增一条吧。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>今天总结</h2>
+      </div>
+      <textarea id="dailySummaryInput" class="summary-input" rows="5" placeholder="例如：今天完成了哪些工作，还有哪些需要明天继续跟进。"></textarea>
+      <p class="form-hint">这里会自动保存，不需要另外点保存。</p>
     </section>
   </div>
 
   <template id="taskTemplate">
     <article class="task-card">
       <div class="task-top">
-        <div>
-          <p class="task-id"></p>
-          <h3 class="task-title"></h3>
-        </div>
-        <div class="badge-stack">
-          <span class="priority-badge"></span>
-          <span class="status-badge"></span>
-        </div>
+        <h3 class="task-title"></h3>
       </div>
-      <p class="task-detail"></p>
-      <div class="task-meta"></div>
       <div class="task-actions">
         <button class="small-button edit-button" type="button">编辑</button>
         <button class="small-button toggle-button" type="button"></button>

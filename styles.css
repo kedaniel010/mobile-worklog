@@ -25,8 +25,8 @@ body {
 
 button,
 input,
-textarea,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -83,28 +83,6 @@ h1 {
   display: none !important;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.stat-card {
-  padding: 18px;
-}
-
-.stat-card span {
-  display: block;
-  color: var(--muted);
-  font-size: 14px;
-  margin-bottom: 8px;
-}
-
-.stat-card strong {
-  font-size: 32px;
-}
-
 .panel {
   padding: 18px;
   margin-bottom: 16px;
@@ -123,14 +101,9 @@ h1 {
   font-size: 22px;
 }
 
-.task-form,
-.field-row {
+.task-form {
   display: grid;
   gap: 14px;
-}
-
-.field-row {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 label {
@@ -138,6 +111,13 @@ label {
   gap: 8px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.form-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 input,
@@ -159,10 +139,14 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
 }
 
+.summary-input {
+  resize: vertical;
+  min-height: 140px;
+}
+
 .form-actions,
 .filter-row,
-.task-actions,
-.backup-actions {
+.task-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -171,8 +155,7 @@ textarea:focus {
 .primary-button,
 .ghost-button,
 .small-button,
-.filter-chip,
-.import-label {
+.filter-chip {
   border: 0;
   border-radius: 999px;
   padding: 12px 16px;
@@ -186,7 +169,6 @@ textarea:focus {
 }
 
 .ghost-button,
-.import-label,
 .small-button {
   background: rgba(255, 255, 255, 0.86);
   color: var(--text);
@@ -215,33 +197,6 @@ textarea:focus {
   color: var(--accent);
 }
 
-.backup-box {
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.backup-copy {
-  margin-bottom: 12px;
-  color: var(--muted);
-  line-height: 1.7;
-}
-
-.import-label {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.import-label input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
 .task-list {
   display: grid;
   gap: 12px;
@@ -253,75 +208,15 @@ textarea:focus {
 
 .task-top {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   margin-bottom: 10px;
 }
 
-.task-id {
-  margin-bottom: 6px;
-  color: var(--warm);
-  font-size: 12px;
-}
-
 .task-title {
   margin-bottom: 0;
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1.25;
-}
-
-.badge-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-end;
-}
-
-.priority-badge,
-.status-badge {
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.priority-high {
-  background: rgba(180, 35, 24, 0.12);
-  color: var(--danger);
-}
-
-.priority-medium {
-  background: rgba(196, 109, 44, 0.12);
-  color: var(--warm);
-}
-
-.priority-low {
-  background: rgba(52, 90, 170, 0.12);
-  color: #345aaa;
-}
-
-.status-pending {
-  background: rgba(15, 118, 110, 0.12);
-  color: var(--accent);
-}
-
-.status-completed {
-  background: rgba(105, 93, 82, 0.12);
-  color: #695d52;
-}
-
-.task-detail {
-  color: var(--muted);
-  line-height: 1.7;
-  margin-bottom: 10px;
-}
-
-.task-meta {
-  display: grid;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 13px;
-  margin-bottom: 14px;
 }
 
 .danger-text {
@@ -337,14 +232,6 @@ textarea:focus {
 @media (max-width: 480px) {
   h1 {
     font-size: 34px;
-  }
-
-  .field-row {
-    grid-template-columns: 1fr;
-  }
-
-  .badge-stack {
-    align-items: flex-start;
   }
 
   .task-top {
