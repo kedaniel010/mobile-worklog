@@ -1,0 +1,9 @@
+{
+  "name": "工作记录助手",
+  "short_name": "工作记录",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5efe3",
+  "theme_color": "#0f766e",
+  "lang": "zh-CN"
+}
