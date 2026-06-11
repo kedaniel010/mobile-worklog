@@ -1,17 +1,20 @@
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open("mobile-worklog-pwa-v1").then((cache) => cache.addAll([
-      "./",
-      "./index.html",
-      "./styles.css",
-      "./app.js",
-      "./manifest.webmanifest"
-    ]))
-  );
+  self.skipWaiting();
 });
 
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+    await self.registration.unregister();
+
+    const clients = await self.clients.matchAll({
+      type: "window",
+      includeUncontrolled: true
+    });
+
+    clients.forEach((client) => {
+      client.navigate(client.url);
+    });
+  })());
 });
