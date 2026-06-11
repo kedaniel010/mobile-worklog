@@ -168,7 +168,6 @@ function render() {
     node.querySelector(".edit-button").addEventListener("click", () => editTask(task.id));
     node.querySelector(".toggle-button").textContent = task.status === "completed" ? "改回未完成" : "标记完成";
     node.querySelector(".toggle-button").addEventListener("click", () => toggleTask(task.id));
-    node.querySelector(".delete-button").addEventListener("click", () => deleteTask(task.id));
     elements.taskList.appendChild(node);
   });
 
@@ -251,16 +250,6 @@ function toggleTask(id) {
     };
   });
 
-  persistTasks();
-  render();
-}
-
-function deleteTask(id) {
-  if (!window.confirm("确认删除这条记录吗？")) {
-    return;
-  }
-
-  state.tasks = state.tasks.filter((task) => task.id !== id);
   persistTasks();
   render();
 }

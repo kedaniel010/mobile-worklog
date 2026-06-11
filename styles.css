@@ -183,20 +183,41 @@ input:focus {
 }
 
 .task-card {
-  padding: 16px;
+  padding: 16px 18px;
 }
 
-.task-top {
+.task-row {
   display: flex;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
 }
 
 .task-title {
   margin-bottom: 0;
-  font-size: 22px;
+  flex: 1;
+  font-size: 20px;
   line-height: 1.25;
+}
+
+.task-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mini-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--text);
+  border: 1px solid rgba(95, 73, 38, 0.12);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .summary-box {
@@ -238,7 +259,13 @@ input:focus {
     font-size: 34px;
   }
 
-  .task-top {
+  .task-row {
+    align-items: flex-start;
     flex-direction: column;
+  }
+
+  .task-inline-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
