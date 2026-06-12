@@ -30,7 +30,7 @@ input {
 .app {
   width: min(720px, 100%);
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 28px);
+  padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 24px);
 }
 
 .auth-screen {
@@ -63,14 +63,14 @@ input {
 }
 
 .hero {
-  padding: 22px;
-  margin-bottom: 16px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
 }
 
 .eyebrow {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--warm);
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   font-weight: 700;
@@ -85,15 +85,16 @@ ul {
 }
 
 h1 {
-  margin-bottom: 10px;
-  font-size: 38px;
-  line-height: 1.05;
+  margin-bottom: 8px;
+  font-size: 31px;
+  line-height: 1.08;
 }
 
 .hero p:last-child {
   margin-bottom: 0;
   color: var(--muted);
-  line-height: 1.7;
+  font-size: 15px;
+  line-height: 1.55;
 }
 
 .hidden {
@@ -103,6 +104,10 @@ h1 {
 .panel {
   padding: 18px;
   margin-bottom: 16px;
+}
+
+.quick-panel {
+  padding: 14px 16px 16px;
 }
 
 .panel-head {
@@ -121,6 +126,18 @@ h1 {
 .task-form {
   display: grid;
   gap: 14px;
+}
+
+.quick-panel .panel-head {
+  margin-bottom: 10px;
+}
+
+.quick-panel .panel-head h2 {
+  font-size: 18px;
+}
+
+.quick-panel .task-form {
+  gap: 10px;
 }
 
 .sync-box {
@@ -173,6 +190,11 @@ label {
   line-height: 1.6;
 }
 
+.quick-hint {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 input {
   width: 100%;
   border-radius: 16px;
@@ -186,6 +208,10 @@ input {
 input:focus {
   border-color: rgba(15, 118, 110, 0.4);
   box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+}
+
+.quick-panel input {
+  padding: 12px 14px;
 }
 
 .form-actions,
@@ -204,6 +230,15 @@ input:focus {
   border-radius: 999px;
   padding: 12px 16px;
   cursor: pointer;
+}
+
+.quick-panel .form-actions {
+  gap: 8px;
+}
+
+.quick-panel .primary-button,
+.quick-panel .ghost-button {
+  padding: 10px 14px;
 }
 
 .primary-button {
