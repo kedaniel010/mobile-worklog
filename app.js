@@ -1,5 +1,4 @@
 const localStorageKey = "mobile-worklog-local-tasks";
-const reminderStorageKey = "mobile-worklog-reminders";
 const TABLE_NAME = "work_tasks";
 
 const config = window.WORKLOG_SUPABASE || {};
@@ -10,7 +9,6 @@ const supabaseClient = hasCloudConfig
 
 const state = {
   tasks: [],
-  reminders: [],
   filter: "pending",
   query: "",
   deferredPrompt: null,
@@ -75,7 +73,6 @@ async function init() {
 
   if (!hasCloudConfig) {
     state.tasks = loadLocalTasks();
-    state.reminders = loadReminders();
     state.loading = false;
     elements.authScreen.classList.add("hidden");
     elements.appContent.classList.remove("hidden");
@@ -93,7 +90,6 @@ async function init() {
     state.session = session || null;
     state.editingTaskId = "";
     await loadTasks();
-    state.reminders = loadReminders();
     updateAuthUi();
     updateViewMode();
     startReminderWatcher();
@@ -101,7 +97,6 @@ async function init() {
   });
 
   await loadTasks();
-  state.reminders = loadReminders();
   updateAuthUi();
   updateViewMode();
   startReminderWatcher();
@@ -136,9 +131,10 @@ async function loadTasks() {
   state.tasks = (data || []).map((task) => ({
     id: String(task.id),
     title: String(task.title || ""),
-    status: task.status === "completed" ? "completed" : "pending",
+    status: task.status === "completed" ? "completed" : (task.status === "reminder" ? "reminder" : "pending"),
     createdAt: task.created_at || new Date().toISOString(),
-    completedAt: task.completed_at || ""
+    completedAt: task.status === "completed" ? (task.completed_at || "") : "",
+    remindAt: task.status === "reminder" ? (task.completed_at || "") : ""
   }));
   state.loading = false;
 }
@@ -174,7 +170,8 @@ async function handleSubmit(event) {
       title,
       status: previous?.status || "pending",
       createdAt: previous?.createdAt || new Date().toISOString(),
-      completedAt: previous?.status === "completed" ? previous.completedAt || new Date().toISOString() : ""
+      completedAt: previous?.status === "completed" ? previous.completedAt || new Date().toISOString() : "",
+      remindAt: previous?.status === "reminder" ? previous.remindAt || "" : ""
     };
 
     if (hasCloudConfig && state.session?.user) {
@@ -184,7 +181,7 @@ async function handleSubmit(event) {
           .update({
             title: task.title,
             status: task.status,
-            completed_at: task.completedAt || null
+            completed_at: getCloudTimeValue(task)
           })
           .eq("id", task.id);
 
@@ -201,7 +198,7 @@ async function handleSubmit(event) {
             title: task.title,
             status: task.status,
             created_at: task.createdAt,
-            completed_at: task.completedAt || null
+            completed_at: getCloudTimeValue(task)
           });
 
         if (error) {
@@ -224,7 +221,7 @@ async function handleSubmit(event) {
     render();
   } finally {
     elements.saveButton.disabled = false;
-    focusTitleInput(true);
+    window.setTimeout(() => focusTitleInput(false), 40);
   }
 }
 
@@ -240,7 +237,7 @@ async function trySmartComplete(input) {
     return true;
   }
 
-  const pendingTasks = state.tasks.filter((task) => task.status === "pending");
+  const pendingTasks = state.tasks.filter((task) => task.status !== "completed");
   const target = pendingTasks
     .map((task) => ({
       task,
@@ -257,7 +254,8 @@ async function trySmartComplete(input) {
   const nextTask = {
     ...target.task,
     status: "completed",
-    completedAt: new Date().toISOString()
+    completedAt: new Date().toISOString(),
+    remindAt: ""
   };
 
   if (hasCloudConfig && state.session?.user) {
@@ -381,7 +379,7 @@ function resetForm() {
 
 function focusTitleInput(selectText = false) {
   requestAnimationFrame(() => {
-    elements.titleInput.focus();
+    elements.titleInput.focus({ preventScroll: true });
     if (selectText) {
       elements.titleInput.select?.();
     }
@@ -402,7 +400,7 @@ function render() {
     node.querySelector(".task-title").textContent = task.title;
     node.querySelector(".edit-button").addEventListener("click", () => editTask(task.id));
     const remindButton = node.querySelector(".remind-button");
-    remindButton.hidden = task.status === "completed";
+    remindButton.hidden = task.status !== "pending";
     remindButton.addEventListener("click", () => setReminderForTask(task.id));
     node.querySelector(".toggle-button").textContent = task.status === "completed" ? "改回未完成" : "标记完成";
     node.querySelector(".toggle-button").addEventListener("click", () => toggleTask(task.id));
@@ -427,7 +425,7 @@ function render() {
 
     if (isEditing) {
       requestAnimationFrame(() => {
-        editInput.focus();
+        editInput.focus({ preventScroll: true });
         editInput.select();
       });
     }
@@ -478,17 +476,12 @@ function renderReminders() {
 
   const reminders = getVisibleReminders();
 
-  reminders.forEach((reminder) => {
-    const task = findTask(reminder.taskId);
-    if (!task) {
-      return;
-    }
-
+  reminders.forEach((task) => {
     const node = elements.reminderTemplate.content.firstElementChild.cloneNode(true);
     node.querySelector(".reminder-title").textContent = task.title;
-    node.querySelector(".reminder-time").textContent = `提醒时间：${formatReminderTime(reminder.remindAt)}`;
-    node.querySelector(".reminder-complete-button").addEventListener("click", () => completeReminderTask(reminder.taskId));
-    node.querySelector(".reminder-clear-button").addEventListener("click", () => clearReminder(reminder.taskId));
+    node.querySelector(".reminder-time").textContent = `提醒时间：${formatReminderTime(task.remindAt)}`;
+    node.querySelector(".reminder-complete-button").addEventListener("click", () => completeReminderTask(task.id));
+    node.querySelector(".reminder-clear-button").addEventListener("click", () => clearReminder(task.id));
     elements.reminderList.appendChild(node);
   });
 
@@ -497,6 +490,10 @@ function renderReminders() {
 
 function getVisibleTasks() {
   return state.tasks.filter((task) => {
+    if (task.status === "reminder") {
+      return false;
+    }
+
     const keywordMatch = !state.query || task.title.toLowerCase().includes(state.query);
     if (!keywordMatch) {
       return false;
@@ -520,12 +517,8 @@ function updateFilterUi() {
 }
 
 function getVisibleReminders() {
-  return state.reminders
-    .map((reminder) => {
-      const task = findTask(reminder.taskId);
-      return task && task.status === "pending" ? reminder : null;
-    })
-    .filter(Boolean)
+  return state.tasks
+    .filter((task) => task.status === "reminder" && task.remindAt)
     .sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime());
 }
 
@@ -595,7 +588,8 @@ async function toggleTask(id) {
   const nextTask = {
     ...current,
     status: nextCompleted ? "completed" : "pending",
-    completedAt: nextCompleted ? new Date().toISOString() : ""
+    completedAt: nextCompleted ? new Date().toISOString() : "",
+    remindAt: ""
   };
 
   if (hasCloudConfig && state.session?.user) {
@@ -603,7 +597,7 @@ async function toggleTask(id) {
       .from(TABLE_NAME)
       .update({
         status: nextTask.status,
-        completed_at: nextTask.completedAt || null
+        completed_at: getCloudTimeValue(nextTask)
       })
       .eq("id", id);
 
@@ -616,10 +610,6 @@ async function toggleTask(id) {
   } else {
     state.tasks = state.tasks.map((task) => (task.id === id ? nextTask : task));
     persistLocalTasks();
-  }
-
-  if (nextCompleted) {
-    removeReminderByTaskId(id);
   }
 
   if (state.editingTaskId === id) {
@@ -637,9 +627,10 @@ function loadLocalTasks() {
       .map((task) => ({
         id: String(task.id || crypto.randomUUID()),
         title: String(task.title),
-        status: task.status === "completed" ? "completed" : "pending",
+        status: task.status === "completed" ? "completed" : (task.status === "reminder" ? "reminder" : "pending"),
         createdAt: task.createdAt || new Date().toISOString(),
-        completedAt: task.completedAt || ""
+        completedAt: task.status === "completed" ? (task.completedAt || "") : "",
+        remindAt: task.status === "reminder" ? (task.remindAt || "") : ""
       }));
   } catch {
     return [];
@@ -648,25 +639,6 @@ function loadLocalTasks() {
 
 function persistLocalTasks() {
   localStorage.setItem(localStorageKey, JSON.stringify(state.tasks));
-}
-
-function loadReminders() {
-  try {
-    const reminders = JSON.parse(localStorage.getItem(reminderStorageKey)) || [];
-    return reminders
-      .filter((item) => item && item.taskId && item.remindAt)
-      .map((item) => ({
-        taskId: String(item.taskId),
-        remindAt: item.remindAt,
-        notifiedAt: item.notifiedAt || ""
-      }));
-  } catch {
-    return [];
-  }
-}
-
-function persistReminders() {
-  localStorage.setItem(reminderStorageKey, JSON.stringify(state.reminders));
 }
 
 function findTask(id) {
@@ -679,8 +651,7 @@ async function setReminderForTask(id) {
     return;
   }
 
-  const existing = state.reminders.find((item) => item.taskId === id);
-  const defaultValue = existing?.remindAt ? toDateTimeLocalValue(existing.remindAt) : "";
+  const defaultValue = task.remindAt ? toDateTimeLocalValue(task.remindAt) : "";
   const rawValue = window.prompt(`给“${task.title}”设置提醒时间。\n请输入格式：2026-06-20 09:30`, defaultValue.replace("T", " "));
 
   if (rawValue === null) {
@@ -698,39 +669,77 @@ async function setReminderForTask(id) {
     return;
   }
 
-  state.reminders = [
-    ...state.reminders.filter((item) => item.taskId !== id),
-    {
-      taskId: id,
-      remindAt,
-      notifiedAt: ""
-    }
-  ];
+  const nextTask = {
+    ...task,
+    status: "reminder",
+    completedAt: "",
+    remindAt
+  };
 
-  persistReminders();
+  if (hasCloudConfig && state.session?.user) {
+    const { error } = await supabaseClient
+      .from(TABLE_NAME)
+      .update({
+        status: "reminder",
+        completed_at: remindAt
+      })
+      .eq("id", id);
+
+    if (error) {
+      window.alert(`设置提醒失败：${error.message}`);
+      return;
+    }
+
+    await loadTasks();
+  } else {
+    state.tasks = state.tasks.map((item) => (item.id === id ? nextTask : item));
+    persistLocalTasks();
+  }
+
   ensureNotificationPermission();
   startReminderWatcher();
   render();
   window.alert("远期提醒已设置。");
 }
 
-function clearReminder(id) {
-  removeReminderByTaskId(id);
+async function clearReminder(id) {
+  const task = findTask(id);
+  if (!task) {
+    return;
+  }
+
+  const nextTask = {
+    ...task,
+    status: "pending",
+    completedAt: "",
+    remindAt: ""
+  };
+
+  if (hasCloudConfig && state.session?.user) {
+    const { error } = await supabaseClient
+      .from(TABLE_NAME)
+      .update({
+        status: "pending",
+        completed_at: null
+      })
+      .eq("id", id);
+
+    if (error) {
+      window.alert(`取消提醒失败：${error.message}`);
+      return;
+    }
+
+    await loadTasks();
+  } else {
+    state.tasks = state.tasks.map((item) => (item.id === id ? nextTask : item));
+    persistLocalTasks();
+  }
+
   render();
 }
 
 async function completeReminderTask(id) {
   await toggleTask(id);
-}
-
-function removeReminderByTaskId(id) {
-  const nextReminders = state.reminders.filter((item) => item.taskId !== id);
-  if (nextReminders.length === state.reminders.length) {
-    return;
-  }
-
-  state.reminders = nextReminders;
-  persistReminders();
 }
 
 function startReminderWatcher() {
@@ -743,42 +752,25 @@ function startReminderWatcher() {
 }
 
 function checkReminders() {
-  if (!state.reminders.length) {
+  const reminders = getVisibleReminders();
+  if (!reminders.length) {
     return;
   }
 
   const now = Date.now();
-  let changed = false;
 
-  state.reminders = state.reminders.map((reminder) => {
-    const task = findTask(reminder.taskId);
-    if (!task || task.status === "completed") {
-      changed = true;
-      return null;
-    }
-
-    const remindTime = new Date(reminder.remindAt).getTime();
+  reminders.forEach((task) => {
+    const remindTime = new Date(task.remindAt).getTime();
     if (!Number.isFinite(remindTime)) {
-      changed = true;
-      return null;
+      return;
     }
 
-    if (!reminder.notifiedAt && remindTime <= now) {
-      notifyReminder(task, reminder.remindAt);
-      changed = true;
-      return {
-        ...reminder,
-        notifiedAt: new Date().toISOString()
-      };
+    const notifyKey = `reminder-notified-${task.id}-${task.remindAt}`;
+    if (remindTime <= now && !sessionStorage.getItem(notifyKey)) {
+      notifyReminder(task, task.remindAt);
+      sessionStorage.setItem(notifyKey, "1");
     }
-
-    return reminder;
-  }).filter(Boolean);
-
-  if (changed) {
-    persistReminders();
-    renderReminders();
-  }
+  });
 }
 
 function notifyReminder(task, remindAt) {
@@ -875,4 +867,16 @@ function toDateTimeLocalValue(value) {
   }
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function getCloudTimeValue(task) {
+  if (task.status === "completed") {
+    return task.completedAt || null;
+  }
+
+  if (task.status === "reminder") {
+    return task.remindAt || null;
+  }
+
+  return null;
 }
