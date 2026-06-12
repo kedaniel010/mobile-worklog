@@ -325,7 +325,7 @@ function updateAuthUi(customText) {
   }
 
   elements.sessionText.textContent = state.session?.user?.email
-    ? `当前已登录：${state.session.user.email}`
+    ? `已登录：${state.session.user.email}`
     : "";
 }
 
