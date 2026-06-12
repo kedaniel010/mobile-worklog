@@ -10,77 +10,85 @@
 </head>
 <body>
   <div class="app">
-    <header class="hero">
-      <div class="hero-copy">
+    <section id="authScreen" class="auth-screen">
+      <div class="auth-card">
         <p class="eyebrow">Simple Work Log</p>
         <h1>工作记录助手</h1>
-        <p>支持手机和电脑使用同一个邮箱登录后自动同步。也支持直接输入“完成 客户报价”来自动标记完成。</p>
-      </div>
-      <button id="installButton" class="ghost-button hidden" type="button">加到桌面</button>
-    </header>
-
-    <section class="panel">
-      <div class="panel-head">
-        <h2>同步登录</h2>
-      </div>
-      <div class="sync-box">
-        <div class="sync-form">
-          <input id="emailInput" type="email" placeholder="输入你的常用邮箱">
-          <button id="sendMagicLinkButton" class="primary-button sync-button" type="button">发送登录链接</button>
-          <button id="signOutButton" class="ghost-button sync-button hidden" type="button">退出登录</button>
+        <p class="auth-copy">先登录一次，之后手机和电脑会自动同步同一份工作记录。正常情况下不用每次重新登录。</p>
+        <div class="sync-box">
+          <div class="sync-form">
+            <input id="emailInput" type="email" placeholder="输入你的常用邮箱">
+            <button id="sendMagicLinkButton" class="primary-button" type="button">发送登录链接</button>
+          </div>
+          <p id="authStatus" class="form-hint">先完成登录，再进入记录页面。</p>
         </div>
-        <p id="authStatus" class="form-hint">还没有登录。登录后，手机和电脑会同步同一份任务。</p>
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>快速记录</h2>
-      </div>
-      <form id="taskForm" class="task-form">
-        <input type="hidden" id="taskId">
-
-        <label>
-          工作内容
-          <input id="titleInput" type="text" maxlength="80" placeholder="例如：跟进客户报价" required>
-        </label>
-
-        <p class="form-hint">直接输入工作内容会新增记录。输入“完成 空格 关键词”会自动把最匹配的未完成任务标记成已完成。</p>
-
-        <div class="form-actions">
-          <button id="saveButton" class="primary-button" type="submit">保存记录</button>
-          <button id="resetButton" class="ghost-button" type="reset">清空</button>
+    <div id="appContent" class="hidden">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Simple Work Log</p>
+          <h1>工作记录助手</h1>
+          <p>登录后自动进入记录页。只保留工作内容和完成状态，手机和电脑可同步使用。</p>
         </div>
-      </form>
-    </section>
+        <button id="installButton" class="ghost-button hidden" type="button">加到桌面</button>
+      </header>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>记录列表</h2>
-      </div>
+      <section class="session-bar">
+        <p id="sessionText" class="session-text"></p>
+        <button id="signOutButton" class="ghost-button session-button" type="button">退出登录</button>
+      </section>
 
-      <input id="searchInput" class="search-input" type="search" placeholder="搜索工作内容">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>快速记录</h2>
+        </div>
+        <form id="taskForm" class="task-form">
+          <input type="hidden" id="taskId">
 
-      <div class="filter-row">
-        <button class="filter-chip active" data-filter="all" type="button">全部</button>
-        <button class="filter-chip" data-filter="pending" type="button">未完成</button>
-        <button class="filter-chip" data-filter="completed" type="button">已完成</button>
-      </div>
+          <label>
+            工作内容
+            <input id="titleInput" type="text" maxlength="80" placeholder="例如：跟进客户报价" required>
+          </label>
 
-      <div id="taskList" class="task-list"></div>
-      <p id="emptyState" class="empty-state">还没有记录，先新增一条吧。</p>
-    </section>
+          <p class="form-hint">直接输入工作内容会新增记录。输入“完成 空格 关键词”会自动把最匹配的未完成任务标记已完成。</p>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>今日总结</h2>
-      </div>
-      <div class="summary-box">
-        <p id="summaryIntro" class="summary-intro"></p>
-        <ul id="summaryList" class="summary-list"></ul>
-        <p id="summaryEmpty" class="form-hint">今天还没有已完成任务，等你完成任务后，这里会自动生成总结。</p>
-      </div>
-    </section>
+          <div class="form-actions">
+            <button id="saveButton" class="primary-button" type="submit">保存记录</button>
+            <button id="resetButton" class="ghost-button" type="reset">清空</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>记录列表</h2>
+        </div>
+
+        <input id="searchInput" class="search-input" type="search" placeholder="搜索工作内容">
+
+        <div class="filter-row">
+          <button class="filter-chip active" data-filter="all" type="button">全部</button>
+          <button class="filter-chip" data-filter="pending" type="button">未完成</button>
+          <button class="filter-chip" data-filter="completed" type="button">已完成</button>
+        </div>
+
+        <div id="taskList" class="task-list"></div>
+        <p id="emptyState" class="empty-state">还没有记录，先新增一条吧。</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>今日总结</h2>
+        </div>
+        <div class="summary-box">
+          <p id="summaryIntro" class="summary-intro"></p>
+          <ul id="summaryList" class="summary-list"></ul>
+          <p id="summaryEmpty" class="form-hint">今天还没有已完成任务，等你完成任务后，这里会自动生成总结。</p>
+        </div>
+      </section>
+    </div>
   </div>
 
   <template id="taskTemplate">

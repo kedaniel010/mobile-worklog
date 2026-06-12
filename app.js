@@ -17,6 +17,8 @@ const state = {
 };
 
 const elements = {
+  authScreen: document.getElementById("authScreen"),
+  appContent: document.getElementById("appContent"),
   taskForm: document.getElementById("taskForm"),
   taskId: document.getElementById("taskId"),
   titleInput: document.getElementById("titleInput"),
@@ -34,7 +36,8 @@ const elements = {
   emailInput: document.getElementById("emailInput"),
   sendMagicLinkButton: document.getElementById("sendMagicLinkButton"),
   signOutButton: document.getElementById("signOutButton"),
-  authStatus: document.getElementById("authStatus")
+  authStatus: document.getElementById("authStatus"),
+  sessionText: document.getElementById("sessionText")
 };
 
 init();
@@ -65,7 +68,9 @@ async function init() {
   if (!hasCloudConfig) {
     state.tasks = loadLocalTasks();
     state.loading = false;
-    updateAuthUi("还没有接入云同步。先按步骤完成 Supabase 配置。");
+    elements.authScreen.classList.add("hidden");
+    elements.appContent.classList.remove("hidden");
+    updateAuthUi("当前是本地版，暂未接入云同步。");
     render();
     return;
   }
@@ -77,11 +82,13 @@ async function init() {
     state.session = session || null;
     await loadTasks();
     updateAuthUi();
+    updateViewMode();
     render();
   });
 
   await loadTasks();
   updateAuthUi();
+  updateViewMode();
   render();
 }
 
@@ -92,7 +99,7 @@ async function loadTasks() {
     return;
   }
 
-  if (!state.session) {
+  if (!state.session?.user) {
     state.tasks = [];
     state.loading = false;
     return;
@@ -100,11 +107,11 @@ async function loadTasks() {
 
   const { data, error } = await supabaseClient
     .from(TABLE_NAME)
-    .select("id, title, status, created_at, completed_at")
+    .select("id, user_id, title, status, created_at, completed_at")
     .order("created_at", { ascending: true });
 
   if (error) {
-    updateAuthUi(`读取云端数据失败：${error.message}`);
+    updateAuthUi(`读取同步数据失败：${error.message}`);
     state.tasks = [];
     state.loading = false;
     return;
@@ -129,6 +136,11 @@ async function handleSubmit(event) {
     return;
   }
 
+  if (hasCloudConfig && !state.session?.user) {
+    window.alert("请先登录，再保存同步任务。");
+    return;
+  }
+
   if (await trySmartComplete(title)) {
     resetForm();
     render();
@@ -145,7 +157,7 @@ async function handleSubmit(event) {
     completedAt: previous?.status === "completed" ? previous?.completedAt || new Date().toISOString() : ""
   };
 
-  if (hasCloudConfig && state.session) {
+  if (hasCloudConfig && state.session?.user) {
     if (existingId) {
       const { error } = await supabaseClient
         .from(TABLE_NAME)
@@ -165,6 +177,7 @@ async function handleSubmit(event) {
         .from(TABLE_NAME)
         .insert({
           id: task.id,
+          user_id: state.session.user.id,
           title: task.title,
           status: task.status,
           created_at: task.createdAt,
@@ -223,7 +236,7 @@ async function trySmartComplete(input) {
     completedAt: new Date().toISOString()
   };
 
-  if (hasCloudConfig && state.session) {
+  if (hasCloudConfig && state.session?.user) {
     const { error } = await supabaseClient
       .from(TABLE_NAME)
       .update({
@@ -258,7 +271,7 @@ function handleSearch(event) {
 
 async function sendMagicLink() {
   if (!hasCloudConfig) {
-    window.alert("还没有接好云同步参数，先按步骤完成 Supabase 配置。");
+    window.alert("当前还没接入云同步。");
     return;
   }
 
@@ -271,7 +284,7 @@ async function sendMagicLink() {
   const { error } = await supabaseClient.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.href
+      emailRedirectTo: window.location.href.split("#")[0]
     }
   });
 
@@ -280,7 +293,7 @@ async function sendMagicLink() {
     return;
   }
 
-  updateAuthUi(`登录邮件已发送到：${email}。请在手机和电脑都使用同一个邮箱登录。`);
+  updateAuthUi(`登录邮件已发送到：${email}。请点击邮件里的登录链接完成登录。`);
 }
 
 async function signOut() {
@@ -293,7 +306,7 @@ async function signOut() {
 
 function installApp() {
   if (!state.deferredPrompt) {
-    window.alert("当前浏览器暂时没有弹出安装提示。你也可以用浏览器菜单选择“添加到主屏幕”。");
+    window.alert("当前浏览器暂时没有弹出安装提示，也可以用浏览器菜单选择“添加到主屏幕”。");
     return;
   }
 
@@ -306,24 +319,32 @@ function updateAuthUi(customText) {
   if (customText) {
     elements.authStatus.textContent = customText;
   } else if (state.session?.user?.email) {
-    elements.authStatus.textContent = `当前已登录：${state.session.user.email}。手机和电脑使用同一个邮箱登录后会自动同步。`;
+    elements.authStatus.textContent = `当前已登录：${state.session.user.email}`;
   } else {
-    elements.authStatus.textContent = "还没有登录。登录后，手机和电脑会同步同一份任务。";
+    elements.authStatus.textContent = "先完成登录，再进入记录页面。";
   }
 
-  const loggedIn = Boolean(state.session?.user);
-  elements.signOutButton.classList.toggle("hidden", !loggedIn);
-  elements.sendMagicLinkButton.classList.toggle("hidden", loggedIn);
-  elements.emailInput.disabled = loggedIn;
+  elements.sessionText.textContent = state.session?.user?.email
+    ? `当前已登录：${state.session.user.email}`
+    : "";
+}
+
+function updateViewMode() {
+  const loggedIn = Boolean(state.session?.user) || !hasCloudConfig;
+  elements.authScreen.classList.toggle("hidden", loggedIn);
+  elements.appContent.classList.toggle("hidden", !loggedIn);
+
+  if (loggedIn) {
+    requestAnimationFrame(() => {
+      elements.titleInput.focus();
+    });
+  }
 }
 
 function resetForm() {
   elements.taskForm.reset();
   elements.taskId.value = "";
   elements.saveButton.textContent = "保存记录";
-  requestAnimationFrame(() => {
-    elements.titleInput.focus();
-  });
 }
 
 function render() {
@@ -343,13 +364,11 @@ function render() {
   if (state.loading) {
     elements.emptyState.hidden = false;
     elements.emptyState.textContent = "正在读取数据...";
-  } else if (!state.session && hasCloudConfig) {
-    elements.emptyState.hidden = false;
-    elements.emptyState.textContent = "请先登录，同步你的任务。";
   } else if (!tasks.length) {
     elements.emptyState.hidden = false;
     elements.emptyState.textContent = "还没有记录，先新增一条吧。";
   }
+
   renderDailySummary();
 }
 
@@ -427,7 +446,7 @@ async function toggleTask(id) {
     completedAt: nextCompleted ? new Date().toISOString() : ""
   };
 
-  if (hasCloudConfig && state.session) {
+  if (hasCloudConfig && state.session?.user) {
     const { error } = await supabaseClient
       .from(TABLE_NAME)
       .update({

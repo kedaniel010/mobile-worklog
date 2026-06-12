@@ -33,6 +33,26 @@ input {
   padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 28px);
 }
 
+.auth-screen {
+  min-height: calc(100vh - 46px);
+  display: grid;
+  place-items: center;
+}
+
+.auth-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  border-radius: 28px;
+  padding: 28px 22px;
+}
+
+.auth-copy {
+  margin-bottom: 18px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .hero,
 .panel,
 .task-card {
@@ -111,6 +131,29 @@ h1 {
 .sync-form {
   display: grid;
   gap: 10px;
+}
+
+.session-bar {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session-text {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.session-button {
+  padding: 10px 14px;
+  flex-shrink: 0;
 }
 
 label {
@@ -271,6 +314,16 @@ input:focus {
 @media (max-width: 480px) {
   h1 {
     font-size: 34px;
+  }
+
+  .auth-screen {
+    min-height: auto;
+    padding-top: 6vh;
+  }
+
+  .session-bar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .task-row {
