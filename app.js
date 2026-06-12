@@ -9,7 +9,7 @@ const supabaseClient = hasCloudConfig
 
 const state = {
   tasks: [],
-  filter: "all",
+  filter: "pending",
   query: "",
   deferredPrompt: null,
   session: null,
