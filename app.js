@@ -1,4 +1,5 @@
 const localStorageKey = "mobile-worklog-local-tasks";
+const reminderStorageKey = "mobile-worklog-reminders";
 const TABLE_NAME = "work_tasks";
 
 const config = window.WORKLOG_SUPABASE || {};
@@ -9,11 +10,14 @@ const supabaseClient = hasCloudConfig
 
 const state = {
   tasks: [],
+  reminders: [],
   filter: "pending",
   query: "",
   deferredPrompt: null,
   session: null,
-  loading: true
+  loading: true,
+  editingTaskId: "",
+  reminderTimer: null
 };
 
 const elements = {
@@ -30,6 +34,9 @@ const elements = {
   taskList: document.getElementById("taskList"),
   emptyState: document.getElementById("emptyState"),
   taskTemplate: document.getElementById("taskTemplate"),
+  reminderList: document.getElementById("reminderList"),
+  reminderEmpty: document.getElementById("reminderEmpty"),
+  reminderTemplate: document.getElementById("reminderTemplate"),
   summaryIntro: document.getElementById("summaryIntro"),
   summaryList: document.getElementById("summaryList"),
   summaryEmpty: document.getElementById("summaryEmpty"),
@@ -49,6 +56,7 @@ async function init() {
   elements.installButton.addEventListener("click", installApp);
   elements.sendMagicLinkButton.addEventListener("click", sendMagicLink);
   elements.signOutButton.addEventListener("click", signOut);
+
   elements.filterButtons.forEach((button) => {
     button.addEventListener("click", () => {
       state.filter = button.dataset.filter;
@@ -67,11 +75,14 @@ async function init() {
 
   if (!hasCloudConfig) {
     state.tasks = loadLocalTasks();
+    state.reminders = loadReminders();
     state.loading = false;
     elements.authScreen.classList.add("hidden");
     elements.appContent.classList.remove("hidden");
     updateAuthUi("当前是本地版，暂未接入云同步。");
+    startReminderWatcher();
     render();
+    focusTitleInput();
     return;
   }
 
@@ -80,15 +91,20 @@ async function init() {
 
   supabaseClient.auth.onAuthStateChange(async (_event, session) => {
     state.session = session || null;
+    state.editingTaskId = "";
     await loadTasks();
+    state.reminders = loadReminders();
     updateAuthUi();
     updateViewMode();
+    startReminderWatcher();
     render();
   });
 
   await loadTasks();
+  state.reminders = loadReminders();
   updateAuthUi();
   updateViewMode();
+  startReminderWatcher();
   render();
 }
 
@@ -119,7 +135,7 @@ async function loadTasks() {
 
   state.tasks = (data || []).map((task) => ({
     id: String(task.id),
-    title: String(task.title),
+    title: String(task.title || ""),
     status: task.status === "completed" ? "completed" : "pending",
     createdAt: task.created_at || new Date().toISOString(),
     completedAt: task.completed_at || ""
@@ -133,6 +149,7 @@ async function handleSubmit(event) {
   const title = elements.titleInput.value.trim();
   if (!title) {
     window.alert("请先填写工作内容。");
+    focusTitleInput();
     return;
   }
 
@@ -141,67 +158,74 @@ async function handleSubmit(event) {
     return;
   }
 
-  if (await trySmartComplete(title)) {
+  elements.saveButton.disabled = true;
+
+  try {
+    if (await trySmartComplete(title)) {
+      resetForm();
+      render();
+      return;
+    }
+
+    const existingId = elements.taskId.value;
+    const previous = existingId ? findTask(existingId) : null;
+    const task = {
+      id: existingId || crypto.randomUUID(),
+      title,
+      status: previous?.status || "pending",
+      createdAt: previous?.createdAt || new Date().toISOString(),
+      completedAt: previous?.status === "completed" ? previous.completedAt || new Date().toISOString() : ""
+    };
+
+    if (hasCloudConfig && state.session?.user) {
+      if (existingId) {
+        const { error } = await supabaseClient
+          .from(TABLE_NAME)
+          .update({
+            title: task.title,
+            status: task.status,
+            completed_at: task.completedAt || null
+          })
+          .eq("id", task.id);
+
+        if (error) {
+          window.alert(`保存修改失败：${error.message}`);
+          return;
+        }
+      } else {
+        const { error } = await supabaseClient
+          .from(TABLE_NAME)
+          .insert({
+            id: task.id,
+            user_id: state.session.user.id,
+            title: task.title,
+            status: task.status,
+            created_at: task.createdAt,
+            completed_at: task.completedAt || null
+          });
+
+        if (error) {
+          window.alert(`新增记录失败：${error.message}`);
+          return;
+        }
+      }
+
+      await loadTasks();
+    } else {
+      if (existingId) {
+        state.tasks = state.tasks.map((item) => (item.id === existingId ? task : item));
+      } else {
+        state.tasks.push(task);
+      }
+      persistLocalTasks();
+    }
+
     resetForm();
     render();
-    return;
+  } finally {
+    elements.saveButton.disabled = false;
+    focusTitleInput(true);
   }
-
-  const existingId = elements.taskId.value;
-  const previous = existingId ? findTask(existingId) : null;
-  const task = {
-    id: existingId || crypto.randomUUID(),
-    title,
-    status: previous?.status || "pending",
-    createdAt: previous?.createdAt || new Date().toISOString(),
-    completedAt: previous?.status === "completed" ? previous?.completedAt || new Date().toISOString() : ""
-  };
-
-  if (hasCloudConfig && state.session?.user) {
-    if (existingId) {
-      const { error } = await supabaseClient
-        .from(TABLE_NAME)
-        .update({
-          title: task.title,
-          status: task.status,
-          completed_at: task.completedAt || null
-        })
-        .eq("id", task.id);
-
-      if (error) {
-        window.alert(`保存修改失败：${error.message}`);
-        return;
-      }
-    } else {
-      const { error } = await supabaseClient
-        .from(TABLE_NAME)
-        .insert({
-          id: task.id,
-          user_id: state.session.user.id,
-          title: task.title,
-          status: task.status,
-          created_at: task.createdAt,
-          completed_at: task.completedAt || null
-        });
-
-      if (error) {
-        window.alert(`新增记录失败：${error.message}`);
-        return;
-      }
-    }
-
-    await loadTasks();
-  } else {
-    if (existingId) {
-      state.tasks = state.tasks.map((item) => (item.id === existingId ? task : item));
-    } else {
-      state.tasks.push(task);
-    }
-    persistLocalTasks();
-  }
-
-  resetForm();
-  render();
 }
 
 async function trySmartComplete(input) {
@@ -261,7 +285,10 @@ async function trySmartComplete(input) {
 }
 
 function handleReset() {
-  setTimeout(resetForm, 0);
+  setTimeout(() => {
+    resetForm();
+    focusTitleInput();
+  }, 0);
 }
 
 function handleSearch(event) {
@@ -271,7 +298,7 @@ function handleSearch(event) {
 
 async function sendMagicLink() {
   if (!hasCloudConfig) {
-    window.alert("当前还没接入云同步。");
+    window.alert("当前还没有接入云同步。");
     return;
   }
 
@@ -281,19 +308,25 @@ async function sendMagicLink() {
     return;
   }
 
-  const { error } = await supabaseClient.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: window.location.href.split("#")[0]
+  elements.sendMagicLinkButton.disabled = true;
+
+  try {
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.href.split("#")[0]
+      }
+    });
+
+    if (error) {
+      window.alert(`发送登录链接失败：${error.message}`);
+      return;
     }
-  });
 
-  if (error) {
-    window.alert(`发送登录链接失败：${error.message}`);
-    return;
+    updateAuthUi(`登录邮件已发送到：${email}。请点击邮箱里的登录链接完成登录。`);
+  } finally {
+    elements.sendMagicLinkButton.disabled = false;
   }
-
-  updateAuthUi(`登录邮件已发送到：${email}。请点击邮件里的登录链接完成登录。`);
 }
 
 async function signOut() {
@@ -306,7 +339,7 @@ async function signOut() {
 
 function installApp() {
   if (!state.deferredPrompt) {
-    window.alert("当前浏览器暂时没有弹出安装提示，也可以用浏览器菜单选择“添加到主屏幕”。");
+    window.alert("当前浏览器暂时没有弹出安装提示，也可以用浏览器菜单选择“添加到桌面”。");
     return;
   }
 
@@ -335,16 +368,24 @@ function updateViewMode() {
   elements.appContent.classList.toggle("hidden", !loggedIn);
 
   if (loggedIn) {
-    requestAnimationFrame(() => {
-      elements.titleInput.focus();
-    });
+    focusTitleInput();
   }
 }
 
 function resetForm() {
   elements.taskForm.reset();
   elements.taskId.value = "";
+  elements.titleInput.value = "";
   elements.saveButton.textContent = "保存记录";
+}
+
+function focusTitleInput(selectText = false) {
+  requestAnimationFrame(() => {
+    elements.titleInput.focus();
+    if (selectText) {
+      elements.titleInput.select?.();
+    }
+  });
 }
 
 function render() {
@@ -353,10 +394,44 @@ function render() {
 
   tasks.forEach((task) => {
     const node = elements.taskTemplate.content.firstElementChild.cloneNode(true);
+    const viewRow = node.querySelector(".task-view-row");
+    const editRow = node.querySelector(".task-edit-row");
+    const editInput = node.querySelector(".task-edit-input");
+    const isEditing = state.editingTaskId === task.id;
+
     node.querySelector(".task-title").textContent = task.title;
     node.querySelector(".edit-button").addEventListener("click", () => editTask(task.id));
+    const remindButton = node.querySelector(".remind-button");
+    remindButton.hidden = task.status === "completed";
+    remindButton.addEventListener("click", () => setReminderForTask(task.id));
     node.querySelector(".toggle-button").textContent = task.status === "completed" ? "改回未完成" : "标记完成";
     node.querySelector(".toggle-button").addEventListener("click", () => toggleTask(task.id));
+    node.querySelector(".save-edit-button").addEventListener("click", () => saveInlineEdit(task.id, editInput));
+    node.querySelector(".cancel-edit-button").addEventListener("click", cancelInlineEdit);
+
+    editInput.value = task.title;
+    editInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        saveInlineEdit(task.id, editInput);
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelInlineEdit();
+      }
+    });
+
+    viewRow.classList.toggle("hidden", isEditing);
+    editRow.classList.toggle("hidden", !isEditing);
+
+    if (isEditing) {
+      requestAnimationFrame(() => {
+        editInput.focus();
+        editInput.select();
+      });
+    }
+
     elements.taskList.appendChild(node);
   });
 
@@ -370,13 +445,14 @@ function render() {
   }
 
   renderDailySummary();
+  renderReminders();
 }
 
 function renderDailySummary() {
   const completedToday = state.tasks.filter((task) => (
-    task.status === "completed" &&
-    task.completedAt &&
-    isToday(task.completedAt)
+    task.status === "completed"
+    && task.completedAt
+    && isToday(task.completedAt)
   ));
 
   elements.summaryList.innerHTML = "";
@@ -395,6 +471,28 @@ function renderDailySummary() {
     item.textContent = task.title;
     elements.summaryList.appendChild(item);
   });
+}
+
+function renderReminders() {
+  elements.reminderList.innerHTML = "";
+
+  const reminders = getVisibleReminders();
+
+  reminders.forEach((reminder) => {
+    const task = findTask(reminder.taskId);
+    if (!task) {
+      return;
+    }
+
+    const node = elements.reminderTemplate.content.firstElementChild.cloneNode(true);
+    node.querySelector(".reminder-title").textContent = task.title;
+    node.querySelector(".reminder-time").textContent = `提醒时间：${formatReminderTime(reminder.remindAt)}`;
+    node.querySelector(".reminder-complete-button").addEventListener("click", () => completeReminderTask(reminder.taskId));
+    node.querySelector(".reminder-clear-button").addEventListener("click", () => clearReminder(reminder.taskId));
+    elements.reminderList.appendChild(node);
+  });
+
+  elements.reminderEmpty.hidden = reminders.length > 0;
 }
 
 function getVisibleTasks() {
@@ -421,16 +519,70 @@ function updateFilterUi() {
   });
 }
 
+function getVisibleReminders() {
+  return state.reminders
+    .map((reminder) => {
+      const task = findTask(reminder.taskId);
+      return task && task.status === "pending" ? reminder : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime());
+}
+
 function editTask(id) {
   const task = findTask(id);
   if (!task) {
     return;
   }
 
-  elements.taskId.value = task.id;
-  elements.titleInput.value = task.title;
-  elements.saveButton.textContent = "保存修改";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  state.editingTaskId = id;
+  render();
+}
+
+async function saveInlineEdit(id, input) {
+  const current = findTask(id);
+  if (!current) {
+    return;
+  }
+
+  const nextTitle = input.value.trim();
+  if (!nextTitle) {
+    window.alert("请先填写工作内容。");
+    input.focus();
+    return;
+  }
+
+  const nextTask = {
+    ...current,
+    title: nextTitle
+  };
+
+  if (hasCloudConfig && state.session?.user) {
+    const { error } = await supabaseClient
+      .from(TABLE_NAME)
+      .update({
+        title: nextTask.title
+      })
+      .eq("id", id);
+
+    if (error) {
+      window.alert(`保存修改失败：${error.message}`);
+      return;
+    }
+
+    await loadTasks();
+  } else {
+    state.tasks = state.tasks.map((task) => (task.id === id ? nextTask : task));
+    persistLocalTasks();
+  }
+
+  state.editingTaskId = "";
+  render();
+}
+
+function cancelInlineEdit() {
+  state.editingTaskId = "";
+  render();
 }
 
 async function toggleTask(id) {
@@ -466,6 +618,14 @@ async function toggleTask(id) {
     persistLocalTasks();
   }
 
+  if (nextCompleted) {
+    removeReminderByTaskId(id);
+  }
+
+  if (state.editingTaskId === id) {
+    state.editingTaskId = "";
+  }
+
   render();
 }
 
@@ -490,8 +650,156 @@ function persistLocalTasks() {
   localStorage.setItem(localStorageKey, JSON.stringify(state.tasks));
 }
 
+function loadReminders() {
+  try {
+    const reminders = JSON.parse(localStorage.getItem(reminderStorageKey)) || [];
+    return reminders
+      .filter((item) => item && item.taskId && item.remindAt)
+      .map((item) => ({
+        taskId: String(item.taskId),
+        remindAt: item.remindAt,
+        notifiedAt: item.notifiedAt || ""
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function persistReminders() {
+  localStorage.setItem(reminderStorageKey, JSON.stringify(state.reminders));
+}
+
 function findTask(id) {
   return state.tasks.find((task) => task.id === id);
+}
+
+async function setReminderForTask(id) {
+  const task = findTask(id);
+  if (!task || task.status === "completed") {
+    return;
+  }
+
+  const existing = state.reminders.find((item) => item.taskId === id);
+  const defaultValue = existing?.remindAt ? toDateTimeLocalValue(existing.remindAt) : "";
+  const rawValue = window.prompt(`给“${task.title}”设置提醒时间。\n请输入格式：2026-06-20 09:30`, defaultValue.replace("T", " "));
+
+  if (rawValue === null) {
+    return;
+  }
+
+  const remindAt = parseReminderInput(rawValue);
+  if (!remindAt) {
+    window.alert("提醒时间格式不对，请按 2026-06-20 09:30 这样的格式输入。");
+    return;
+  }
+
+  if (new Date(remindAt).getTime() <= Date.now()) {
+    window.alert("提醒时间需要晚于当前时间。");
+    return;
+  }
+
+  state.reminders = [
+    ...state.reminders.filter((item) => item.taskId !== id),
+    {
+      taskId: id,
+      remindAt,
+      notifiedAt: ""
+    }
+  ];
+
+  persistReminders();
+  ensureNotificationPermission();
+  startReminderWatcher();
+  render();
+  window.alert("远期提醒已设置。");
+}
+
+function clearReminder(id) {
+  removeReminderByTaskId(id);
+  render();
+}
+
+async function completeReminderTask(id) {
+  await toggleTask(id);
+}
+
+function removeReminderByTaskId(id) {
+  const nextReminders = state.reminders.filter((item) => item.taskId !== id);
+  if (nextReminders.length === state.reminders.length) {
+    return;
+  }
+
+  state.reminders = nextReminders;
+  persistReminders();
+}
+
+function startReminderWatcher() {
+  if (state.reminderTimer) {
+    window.clearInterval(state.reminderTimer);
+  }
+
+  checkReminders();
+  state.reminderTimer = window.setInterval(checkReminders, 30000);
+}
+
+function checkReminders() {
+  if (!state.reminders.length) {
+    return;
+  }
+
+  const now = Date.now();
+  let changed = false;
+
+  state.reminders = state.reminders.map((reminder) => {
+    const task = findTask(reminder.taskId);
+    if (!task || task.status === "completed") {
+      changed = true;
+      return null;
+    }
+
+    const remindTime = new Date(reminder.remindAt).getTime();
+    if (!Number.isFinite(remindTime)) {
+      changed = true;
+      return null;
+    }
+
+    if (!reminder.notifiedAt && remindTime <= now) {
+      notifyReminder(task, reminder.remindAt);
+      changed = true;
+      return {
+        ...reminder,
+        notifiedAt: new Date().toISOString()
+      };
+    }
+
+    return reminder;
+  }).filter(Boolean);
+
+  if (changed) {
+    persistReminders();
+    renderReminders();
+  }
+}
+
+function notifyReminder(task, remindAt) {
+  const title = `工作提醒：${task.title}`;
+  const body = `到提醒时间了：${formatReminderTime(remindAt)}`;
+
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body });
+  } else {
+    window.alert(`${title}\n${body}`);
+  }
+}
+
+function ensureNotificationPermission() {
+  if (!("Notification" in window)) {
+    return;
+  }
+
+  if (Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
 }
 
 function getMatchScore(title, keyword) {
@@ -524,4 +832,47 @@ function isToday(value) {
   return date.getFullYear() === now.getFullYear()
     && date.getMonth() === now.getMonth()
     && date.getDate() === now.getDate();
+}
+
+function parseReminderInput(input) {
+  const normalized = input.trim().replace(/\//g, "-").replace("T", " ");
+  const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return "";
+  }
+
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+    0
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString();
+}
+
+function formatReminderTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "未设置";
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function toDateTimeLocalValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }

@@ -277,6 +277,11 @@ input:focus {
   gap: 12px;
 }
 
+.reminder-list {
+  display: grid;
+  gap: 12px;
+}
+
 .task-card {
   padding: 16px 18px;
 }
@@ -300,6 +305,15 @@ input:focus {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.task-edit-row {
+  display: grid;
+  gap: 10px;
+}
+
+.task-edit-input {
+  padding: 12px 14px;
 }
 
 .mini-button {
@@ -339,6 +353,35 @@ input:focus {
   margin-top: 6px;
 }
 
+.reminder-intro {
+  margin-bottom: 12px;
+}
+
+.reminder-card {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.reminder-row {
+  align-items: center;
+}
+
+.reminder-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.reminder-title {
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.reminder-time {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .danger-text {
   color: var(--danger);
 }
@@ -372,5 +415,14 @@ input:focus {
   .task-inline-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .reminder-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .task-edit-row .task-inline-actions {
+    width: 100%;
   }
 }
