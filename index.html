@@ -14,10 +14,24 @@
       <div class="hero-copy">
         <p class="eyebrow">Simple Work Log</p>
         <h1>工作记录助手</h1>
-        <p>只保留最核心的两项：工作内容和完成状态。你也可以直接输入“完成 客户报价”来自动标记完成。</p>
+        <p>支持手机和电脑使用同一个邮箱登录后自动同步。也支持直接输入“完成 客户报价”来自动标记完成。</p>
       </div>
       <button id="installButton" class="ghost-button hidden" type="button">加到桌面</button>
     </header>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>同步登录</h2>
+      </div>
+      <div class="sync-box">
+        <div class="sync-form">
+          <input id="emailInput" type="email" placeholder="输入你的常用邮箱">
+          <button id="sendMagicLinkButton" class="primary-button sync-button" type="button">发送登录链接</button>
+          <button id="signOutButton" class="ghost-button sync-button hidden" type="button">退出登录</button>
+        </div>
+        <p id="authStatus" class="form-hint">还没有登录。登录后，手机和电脑会同步同一份任务。</p>
+      </div>
+    </section>
 
     <section class="panel">
       <div class="panel-head">
@@ -81,6 +95,8 @@
     </article>
   </template>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

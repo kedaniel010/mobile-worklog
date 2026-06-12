@@ -1,10 +1,19 @@
-const storageKey = "mobile-worklog-pwa-tasks";
+const localStorageKey = "mobile-worklog-local-tasks";
+const TABLE_NAME = "work_tasks";
+
+const config = window.WORKLOG_SUPABASE || {};
+const hasCloudConfig = Boolean(config.url && config.anonKey && window.supabase);
+const supabaseClient = hasCloudConfig
+  ? window.supabase.createClient(config.url, config.anonKey)
+  : null;
 
 const state = {
-  tasks: loadTasks(),
+  tasks: [],
   filter: "all",
   query: "",
-  deferredPrompt: null
+  deferredPrompt: null,
+  session: null,
+  loading: true
 };
 
 const elements = {
@@ -21,16 +30,22 @@ const elements = {
   taskTemplate: document.getElementById("taskTemplate"),
   summaryIntro: document.getElementById("summaryIntro"),
   summaryList: document.getElementById("summaryList"),
-  summaryEmpty: document.getElementById("summaryEmpty")
+  summaryEmpty: document.getElementById("summaryEmpty"),
+  emailInput: document.getElementById("emailInput"),
+  sendMagicLinkButton: document.getElementById("sendMagicLinkButton"),
+  signOutButton: document.getElementById("signOutButton"),
+  authStatus: document.getElementById("authStatus")
 };
 
 init();
 
-function init() {
+async function init() {
   elements.taskForm.addEventListener("submit", handleSubmit);
   elements.taskForm.addEventListener("reset", handleReset);
   elements.searchInput.addEventListener("input", handleSearch);
   elements.installButton.addEventListener("click", installApp);
+  elements.sendMagicLinkButton.addEventListener("click", sendMagicLink);
+  elements.signOutButton.addEventListener("click", signOut);
   elements.filterButtons.forEach((button) => {
     button.addEventListener("click", () => {
       state.filter = button.dataset.filter;
@@ -46,10 +61,66 @@ function init() {
   });
 
   updateFilterUi();
+
+  if (!hasCloudConfig) {
+    state.tasks = loadLocalTasks();
+    state.loading = false;
+    updateAuthUi("还没有接入云同步。先按步骤完成 Supabase 配置。");
+    render();
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getSession();
+  state.session = data.session || null;
+
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    state.session = session || null;
+    await loadTasks();
+    updateAuthUi();
+    render();
+  });
+
+  await loadTasks();
+  updateAuthUi();
   render();
 }
 
-function handleSubmit(event) {
+async function loadTasks() {
+  if (!hasCloudConfig) {
+    state.tasks = loadLocalTasks();
+    state.loading = false;
+    return;
+  }
+
+  if (!state.session) {
+    state.tasks = [];
+    state.loading = false;
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from(TABLE_NAME)
+    .select("id, title, status, created_at, completed_at")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    updateAuthUi(`读取云端数据失败：${error.message}`);
+    state.tasks = [];
+    state.loading = false;
+    return;
+  }
+
+  state.tasks = (data || []).map((task) => ({
+    id: String(task.id),
+    title: String(task.title),
+    status: task.status === "completed" ? "completed" : "pending",
+    createdAt: task.created_at || new Date().toISOString(),
+    completedAt: task.completed_at || ""
+  }));
+  state.loading = false;
+}
+
+async function handleSubmit(event) {
   event.preventDefault();
 
   const title = elements.titleInput.value.trim();
@@ -58,7 +129,7 @@ function handleSubmit(event) {
     return;
   }
 
-  if (trySmartComplete(title)) {
+  if (await trySmartComplete(title)) {
     resetForm();
     render();
     return;
@@ -66,7 +137,6 @@ function handleSubmit(event) {
 
   const existingId = elements.taskId.value;
   const previous = existingId ? findTask(existingId) : null;
-
   const task = {
     id: existingId || crypto.randomUUID(),
     title,
@@ -75,18 +145,53 @@ function handleSubmit(event) {
     completedAt: previous?.status === "completed" ? previous?.completedAt || new Date().toISOString() : ""
   };
 
-  if (existingId) {
-    state.tasks = state.tasks.map((item) => (item.id === existingId ? task : item));
+  if (hasCloudConfig && state.session) {
+    if (existingId) {
+      const { error } = await supabaseClient
+        .from(TABLE_NAME)
+        .update({
+          title: task.title,
+          status: task.status,
+          completed_at: task.completedAt || null
+        })
+        .eq("id", task.id);
+
+      if (error) {
+        window.alert(`保存修改失败：${error.message}`);
+        return;
+      }
+    } else {
+      const { error } = await supabaseClient
+        .from(TABLE_NAME)
+        .insert({
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          created_at: task.createdAt,
+          completed_at: task.completedAt || null
+        });
+
+      if (error) {
+        window.alert(`新增记录失败：${error.message}`);
+        return;
+      }
+    }
+
+    await loadTasks();
   } else {
-    state.tasks.push(task);
+    if (existingId) {
+      state.tasks = state.tasks.map((item) => (item.id === existingId ? task : item));
+    } else {
+      state.tasks.push(task);
+    }
+    persistLocalTasks();
   }
 
-  persistTasks();
   resetForm();
   render();
 }
 
-function trySmartComplete(input) {
+async function trySmartComplete(input) {
   const match = input.match(/^(完成|已完成|done)\s+(.+)$/i);
   if (!match) {
     return false;
@@ -112,19 +217,32 @@ function trySmartComplete(input) {
     return true;
   }
 
-  state.tasks = state.tasks.map((task) => {
-    if (task.id !== target.task.id) {
-      return task;
+  const nextTask = {
+    ...target.task,
+    status: "completed",
+    completedAt: new Date().toISOString()
+  };
+
+  if (hasCloudConfig && state.session) {
+    const { error } = await supabaseClient
+      .from(TABLE_NAME)
+      .update({
+        status: "completed",
+        completed_at: nextTask.completedAt
+      })
+      .eq("id", nextTask.id);
+
+    if (error) {
+      window.alert(`自动完成失败：${error.message}`);
+      return true;
     }
 
-    return {
-      ...task,
-      status: "completed",
-      completedAt: new Date().toISOString()
-    };
-  });
+    await loadTasks();
+  } else {
+    state.tasks = state.tasks.map((task) => (task.id === nextTask.id ? nextTask : task));
+    persistLocalTasks();
+  }
 
-  persistTasks();
   window.alert(`已自动完成：${target.task.title}`);
   return true;
 }
@@ -138,6 +256,41 @@ function handleSearch(event) {
   render();
 }
 
+async function sendMagicLink() {
+  if (!hasCloudConfig) {
+    window.alert("还没有接好云同步参数，先按步骤完成 Supabase 配置。");
+    return;
+  }
+
+  const email = elements.emailInput.value.trim();
+  if (!email) {
+    window.alert("请先输入邮箱。");
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.href
+    }
+  });
+
+  if (error) {
+    window.alert(`发送登录链接失败：${error.message}`);
+    return;
+  }
+
+  updateAuthUi(`登录邮件已发送到：${email}。请在手机和电脑都使用同一个邮箱登录。`);
+}
+
+async function signOut() {
+  if (!hasCloudConfig) {
+    return;
+  }
+
+  await supabaseClient.auth.signOut();
+}
+
 function installApp() {
   if (!state.deferredPrompt) {
     window.alert("当前浏览器暂时没有弹出安装提示。你也可以用浏览器菜单选择“添加到主屏幕”。");
@@ -147,6 +300,21 @@ function installApp() {
   state.deferredPrompt.prompt();
   state.deferredPrompt = null;
   elements.installButton.classList.add("hidden");
+}
+
+function updateAuthUi(customText) {
+  if (customText) {
+    elements.authStatus.textContent = customText;
+  } else if (state.session?.user?.email) {
+    elements.authStatus.textContent = `当前已登录：${state.session.user.email}。手机和电脑使用同一个邮箱登录后会自动同步。`;
+  } else {
+    elements.authStatus.textContent = "还没有登录。登录后，手机和电脑会同步同一份任务。";
+  }
+
+  const loggedIn = Boolean(state.session?.user);
+  elements.signOutButton.classList.toggle("hidden", !loggedIn);
+  elements.sendMagicLinkButton.classList.toggle("hidden", loggedIn);
+  elements.emailInput.disabled = loggedIn;
 }
 
 function resetForm() {
@@ -172,6 +340,16 @@ function render() {
   });
 
   elements.emptyState.hidden = tasks.length > 0;
+  if (state.loading) {
+    elements.emptyState.hidden = false;
+    elements.emptyState.textContent = "正在读取数据...";
+  } else if (!state.session && hasCloudConfig) {
+    elements.emptyState.hidden = false;
+    elements.emptyState.textContent = "请先登录，同步你的任务。";
+  } else if (!tasks.length) {
+    elements.emptyState.hidden = false;
+    elements.emptyState.textContent = "还没有记录，先新增一条吧。";
+  }
   renderDailySummary();
 }
 
@@ -236,27 +414,45 @@ function editTask(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function toggleTask(id) {
-  state.tasks = state.tasks.map((task) => {
-    if (task.id !== id) {
-      return task;
+async function toggleTask(id) {
+  const current = findTask(id);
+  if (!current) {
+    return;
+  }
+
+  const nextCompleted = current.status !== "completed";
+  const nextTask = {
+    ...current,
+    status: nextCompleted ? "completed" : "pending",
+    completedAt: nextCompleted ? new Date().toISOString() : ""
+  };
+
+  if (hasCloudConfig && state.session) {
+    const { error } = await supabaseClient
+      .from(TABLE_NAME)
+      .update({
+        status: nextTask.status,
+        completed_at: nextTask.completedAt || null
+      })
+      .eq("id", id);
+
+    if (error) {
+      window.alert(`更新状态失败：${error.message}`);
+      return;
     }
 
-    const nextCompleted = task.status !== "completed";
-    return {
-      ...task,
-      status: nextCompleted ? "completed" : "pending",
-      completedAt: nextCompleted ? new Date().toISOString() : ""
-    };
-  });
+    await loadTasks();
+  } else {
+    state.tasks = state.tasks.map((task) => (task.id === id ? nextTask : task));
+    persistLocalTasks();
+  }
 
-  persistTasks();
   render();
 }
 
-function loadTasks() {
+function loadLocalTasks() {
   try {
-    const tasks = JSON.parse(localStorage.getItem(storageKey)) || [];
+    const tasks = JSON.parse(localStorage.getItem(localStorageKey)) || [];
     return tasks
       .filter((task) => task && task.title)
       .map((task) => ({
@@ -271,8 +467,8 @@ function loadTasks() {
   }
 }
 
-function persistTasks() {
-  localStorage.setItem(storageKey, JSON.stringify(state.tasks));
+function persistLocalTasks() {
+  localStorage.setItem(localStorageKey, JSON.stringify(state.tasks));
 }
 
 function findTask(id) {

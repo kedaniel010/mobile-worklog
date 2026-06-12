@@ -103,6 +103,16 @@ h1 {
   gap: 14px;
 }
 
+.sync-box {
+  display: grid;
+  gap: 12px;
+}
+
+.sync-form {
+  display: grid;
+  gap: 10px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -154,6 +164,10 @@ input:focus {
   background: var(--accent);
   color: #fff;
   flex: 1;
+}
+
+.sync-button {
+  flex: none;
 }
 
 .ghost-button,
