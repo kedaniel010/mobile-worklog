@@ -76,6 +76,14 @@ async function init() {
     syncTasksInBackground();
   });
 
+  window.addEventListener("pageshow", () => {
+    syncTasksInBackground();
+  });
+
+  window.addEventListener("online", () => {
+    syncTasksInBackground();
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       syncTasksInBackground();
@@ -515,16 +523,16 @@ function renderReminders() {
 function getVisibleTasks() {
   const reminderTitleKeys = new Set(
     state.tasks
-      .filter((task) => task.status === "reminder")
-      .map((task) => getTaskTitleKey(task.title))
+      .filter((task) => task.status === "reminder" || Boolean(task.remindAt))
+      .map((task) => getComparableTaskKey(task.title))
   );
 
   return state.tasks.filter((task) => {
-    if (task.status === "reminder") {
+    if (task.status === "reminder" || task.remindAt) {
       return false;
     }
 
-    if (task.status === "pending" && reminderTitleKeys.has(getTaskTitleKey(task.title))) {
+    if (reminderTitleKeys.has(getComparableTaskKey(task.title))) {
       return false;
     }
 
@@ -829,9 +837,9 @@ function startCloudSyncWatcher() {
     return;
   }
 
-  state.cloudSyncTimer = window.setInterval(() => {
-    syncTasksInBackground();
-  }, 15000);
+    state.cloudSyncTimer = window.setInterval(() => {
+      syncTasksInBackground();
+    }, 5000);
 }
 
 function startRealtimeSyncWatcher() {
@@ -969,6 +977,15 @@ function getTaskTitleKey(title) {
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/[，。！？,.!?:：;；、"'“”‘’\-_/\\()（）【】\[\]]/g, "");
+}
+
+function getComparableTaskKey(title) {
+  return String(title || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 function isToday(value) {
