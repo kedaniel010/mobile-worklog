@@ -1,5 +1,6 @@
 const localStorageKey = "mobile-worklog-local-tasks";
 const TABLE_NAME = "work_tasks";
+const URGENT_PREFIX = "__WORKLOG_URGENT__::";
 
 const config = window.WORKLOG_SUPABASE || {};
 const hasCloudConfig = Boolean(config.url && config.anonKey && window.supabase);
@@ -15,7 +16,9 @@ const state = {
   session: null,
   loading: true,
   editingTaskId: "",
-  reminderTimer: null
+  reminderTimer: null,
+  cloudSyncTimer: null,
+  realtimeChannel: null
 };
 
 const elements = {
@@ -69,6 +72,16 @@ async function init() {
     elements.installButton.classList.remove("hidden");
   });
 
+  window.addEventListener("focus", () => {
+    syncTasksInBackground();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      syncTasksInBackground();
+    }
+  });
+
   updateFilterUi();
 
   if (!hasCloudConfig) {
@@ -93,6 +106,8 @@ async function init() {
     updateAuthUi();
     updateViewMode();
     startReminderWatcher();
+    startCloudSyncWatcher();
+    startRealtimeSyncWatcher();
     render();
   });
 
@@ -100,6 +115,8 @@ async function init() {
   updateAuthUi();
   updateViewMode();
   startReminderWatcher();
+  startCloudSyncWatcher();
+  startRealtimeSyncWatcher();
   render();
 }
 
@@ -130,7 +147,8 @@ async function loadTasks() {
 
   state.tasks = (data || []).map((task) => ({
     id: String(task.id),
-    title: String(task.title || ""),
+    title: getDisplayTitle(task.title),
+    urgent: isUrgentTitle(task.title),
     status: task.status === "completed" ? "completed" : (task.status === "reminder" ? "reminder" : "pending"),
     createdAt: task.created_at || new Date().toISOString(),
     completedAt: task.status === "completed" ? (task.completed_at || "") : "",
@@ -168,6 +186,7 @@ async function handleSubmit(event) {
     const task = {
       id: existingId || crypto.randomUUID(),
       title,
+      urgent: previous?.urgent || false,
       status: previous?.status || "pending",
       createdAt: previous?.createdAt || new Date().toISOString(),
       completedAt: previous?.status === "completed" ? previous.completedAt || new Date().toISOString() : "",
@@ -179,7 +198,7 @@ async function handleSubmit(event) {
         const { error } = await supabaseClient
           .from(TABLE_NAME)
           .update({
-            title: task.title,
+            title: toStoredTitle(task.title, task.urgent),
             status: task.status,
             completed_at: getCloudTimeValue(task)
           })
@@ -195,7 +214,7 @@ async function handleSubmit(event) {
           .insert({
             id: task.id,
             user_id: state.session.user.id,
-            title: task.title,
+            title: toStoredTitle(task.title, task.urgent),
             status: task.status,
             created_at: task.createdAt,
             completed_at: getCloudTimeValue(task)
@@ -398,7 +417,12 @@ function render() {
     const isEditing = state.editingTaskId === task.id;
 
     node.querySelector(".task-title").textContent = task.title;
+    node.querySelector(".task-title").classList.toggle("danger-text", Boolean(task.urgent));
     node.querySelector(".edit-button").addEventListener("click", () => editTask(task.id));
+    const urgentButton = node.querySelector(".urgent-button");
+    urgentButton.textContent = task.urgent ? "取消紧急" : "紧急";
+    urgentButton.classList.toggle("danger-text", Boolean(task.urgent));
+    urgentButton.addEventListener("click", () => toggleUrgent(task.id));
     const remindButton = node.querySelector(".remind-button");
     remindButton.hidden = task.status !== "pending";
     remindButton.addEventListener("click", () => setReminderForTask(task.id));
@@ -489,8 +513,18 @@ function renderReminders() {
 }
 
 function getVisibleTasks() {
+  const reminderTitleKeys = new Set(
+    state.tasks
+      .filter((task) => task.status === "reminder")
+      .map((task) => getTaskTitleKey(task.title))
+  );
+
   return state.tasks.filter((task) => {
     if (task.status === "reminder") {
+      return false;
+    }
+
+    if (task.status === "pending" && reminderTitleKeys.has(getTaskTitleKey(task.title))) {
       return false;
     }
 
@@ -507,7 +541,7 @@ function getVisibleTasks() {
       default:
         return true;
     }
-  });
+  }).sort(compareTasksForList);
 }
 
 function updateFilterUi() {
@@ -554,7 +588,7 @@ async function saveInlineEdit(id, input) {
     const { error } = await supabaseClient
       .from(TABLE_NAME)
       .update({
-        title: nextTask.title
+        title: toStoredTitle(nextTask.title, nextTask.urgent)
       })
       .eq("id", id);
 
@@ -619,6 +653,39 @@ async function toggleTask(id) {
   render();
 }
 
+async function toggleUrgent(id) {
+  const current = findTask(id);
+  if (!current) {
+    return;
+  }
+
+  const nextTask = {
+    ...current,
+    urgent: !current.urgent
+  };
+
+  if (hasCloudConfig && state.session?.user) {
+    const { error } = await supabaseClient
+      .from(TABLE_NAME)
+      .update({
+        title: toStoredTitle(nextTask.title, nextTask.urgent)
+      })
+      .eq("id", id);
+
+    if (error) {
+      window.alert(`更新紧急状态失败：${error.message}`);
+      return;
+    }
+
+    await loadTasks();
+  } else {
+    state.tasks = state.tasks.map((task) => (task.id === id ? nextTask : task));
+    persistLocalTasks();
+  }
+
+  render();
+}
+
 function loadLocalTasks() {
   try {
     const tasks = JSON.parse(localStorage.getItem(localStorageKey)) || [];
@@ -626,7 +693,8 @@ function loadLocalTasks() {
       .filter((task) => task && task.title)
       .map((task) => ({
         id: String(task.id || crypto.randomUUID()),
-        title: String(task.title),
+        title: getDisplayTitle(task.title),
+        urgent: isUrgentTitle(task.title),
         status: task.status === "completed" ? "completed" : (task.status === "reminder" ? "reminder" : "pending"),
         createdAt: task.createdAt || new Date().toISOString(),
         completedAt: task.status === "completed" ? (task.completedAt || "") : "",
@@ -751,6 +819,61 @@ function startReminderWatcher() {
   state.reminderTimer = window.setInterval(checkReminders, 30000);
 }
 
+function startCloudSyncWatcher() {
+  if (state.cloudSyncTimer) {
+    window.clearInterval(state.cloudSyncTimer);
+    state.cloudSyncTimer = null;
+  }
+
+  if (!hasCloudConfig || !state.session?.user) {
+    return;
+  }
+
+  state.cloudSyncTimer = window.setInterval(() => {
+    syncTasksInBackground();
+  }, 15000);
+}
+
+function startRealtimeSyncWatcher() {
+  if (state.realtimeChannel) {
+    supabaseClient.removeChannel(state.realtimeChannel);
+    state.realtimeChannel = null;
+  }
+
+  if (!hasCloudConfig || !state.session?.user) {
+    return;
+  }
+
+  state.realtimeChannel = supabaseClient
+    .channel(`worklog-sync-${state.session.user.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: TABLE_NAME,
+        filter: `user_id=eq.${state.session.user.id}`
+      },
+      async () => {
+        await syncTasksInBackground();
+      }
+    )
+    .subscribe();
+}
+
+async function syncTasksInBackground() {
+  if (!hasCloudConfig || !state.session?.user) {
+    return;
+  }
+
+  if (state.editingTaskId) {
+    return;
+  }
+
+  await loadTasks();
+  render();
+}
+
 function checkReminders() {
   const reminders = getVisibleReminders();
   if (!reminders.length) {
@@ -816,6 +939,36 @@ function getMatchScore(title, keyword) {
   });
 
   return score;
+}
+
+function compareTasksForList(a, b) {
+  if (Boolean(a.urgent) !== Boolean(b.urgent)) {
+    return a.urgent ? -1 : 1;
+  }
+
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+}
+
+function isUrgentTitle(value) {
+  return String(value || "").startsWith(URGENT_PREFIX);
+}
+
+function getDisplayTitle(value) {
+  const text = String(value || "");
+  return isUrgentTitle(text) ? text.slice(URGENT_PREFIX.length) : text;
+}
+
+function toStoredTitle(title, urgent) {
+  const cleanTitle = getDisplayTitle(title).trim();
+  return urgent ? `${URGENT_PREFIX}${cleanTitle}` : cleanTitle;
+}
+
+function getTaskTitleKey(title) {
+  return String(title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[，。！？,.!?:：;；、"'“”‘’\-_/\\()（）【】\[\]]/g, "");
 }
 
 function isToday(value) {
